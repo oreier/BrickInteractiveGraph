@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Building Network</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        #graph-container {
+            height: 800px;
+            width: 100%; /* Ensure the width is 100% */
+            border: 1px solid #ccc;
+            z-index: 10;
+        }
+        #query-container {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Interactive Building Graph</h1>
+    <div id="graph-container"></div>
+
+    <div id="query-container">
+        <h2>SPARQL Query</h2>
+        <textarea id="query-text" rows="10" cols="50" placeholder="Click a node to build your query..."></textarea><br>
+        <button onclick="executeQuery()">Run Query</button>
+        <div id="query-results"></div>
+    </div>
+
+    <!-- Include vis.js -->
+    <script src="https://cdn.jsdelivr.net/npm/vis-network@9.0.0/dist/vis-network.min.js"></script>
+
+    <!-- Injecting the JSON data for nodes and edges -->
+    <script>
+        
+        var container = document.getElementById('graph-container');
+
+        var nodesData = {{ nodes_json | tojson }};
+        var edgesData = {{ edges_json | tojson }};
+
+        //console.log('Nodes:', nodesData);
+        //console.log('Edges:', edgesData);
+        
+        // Create vis.DataSet from the nodes and edges JSON data
+        var nodes = new vis.DataSet(nodesData);
+        var edges = new vis.DataSet(edgesData);
+        
+        // Check if data is properly formatted
+        // console.log('Nodes:', nodes);
+        // console.log('Edges:', edges);
+
+        var data = {
+            nodes: nodes,
+            edges: edges
+        };
+        
+        
+        var options = {
+            "clickToUse": true,
+            "physics": {
+                "enabled": true
+            },
+            "layout": {
+                "improvedLayout": false  // Disable the improved layout here
+            }
+        };
+        
+        var network = new vis.Network(container, data, options);
+        console.log(network);
+
+        // Capture click event on node
+        network.on("click", function(properties) {
+            var clickedNodeId = properties.nodes[0];
+            var query = buildSPARQLQuery(clickedNodeId);
+            document.getElementById("query-text").value = query;
+        });
+
+        // Function to build SPARQL query dynamically based on the clicked node
+        function buildSPARQLQuery(node) {
+            return `SELECT ?predicate ?object WHERE { <${node}> ?predicate ?object . }`;
+        }
+
+        function executeQuery() {
+            var query = document.getElementById("query-text").value;
+            // Use fetch to send the query to Flask and get the results
+            fetch('/execute_query', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ query: query })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.results) {
+                    let resultsHtml = "<ul>";
+                    data.results.forEach(result => {
+                        resultsHtml += `<li><strong>Subject:</strong> ${result.subject}, <strong>Predicate:</strong> ${result.predicate}, <strong>Object:</strong> ${result.object}</li>`;
+                    });
+                    resultsHtml += "</ul>";
+                    document.getElementById("query-results").innerHTML = resultsHtml;
+                } else {
+                    document.getElementById("query-results").innerHTML = "<p>No results found.</p>";
+                }
+            })
+            .catch(error => {
+                document.getElementById("query-results").innerHTML = `<p>Error: ${error}</p>`;
+            });
+        }
+    </script>
+</body>
+</html>

@@ -2,8 +2,15 @@ import rdflib
 from pyvis.network import Network
 import json
 
+from collections import defaultdict
+import random
+
+
 # Initialize RDF graph
 g = rdflib.Graph()
+
+type_map = {}  # node_id → type_label
+type_colors = {}  # type_label → hex color
 
 # Load the RDF data (replace with your actual TTL file)
 file = 'bldg1.ttl'
@@ -34,6 +41,7 @@ query = """
 # Execute the query to get nodes
 results = g.query(query)
 
+
 # Add nodes to the network
 visited_nodes = set()
 
@@ -50,31 +58,103 @@ def rename_predicate(predicate):
         return g.qname(predicate)
     else:
         return str(predicate)
+    
+def inital_nodes(node_label):
+    #keywords = ['AHU', 'ZONE', 'CHW', 'VAV', 'ROOM', 'FLOOR']
+    keywords = ['FLOOR']
+    result = any(keyword in node_label.upper() for keyword in keywords)
+    if result:
+        print(f"✔️ Matched: {node_label}")
+    return result
 
-# Add initial nodes to the graph
+def get_color_for_type(type_label):
+    if type_label not in type_colors:
+        # Generate soft pastel color
+        r = lambda: random.randint(100, 200)
+        type_colors[type_label] = f'#{r():02x}{r():02x}{r():02x}'
+    return type_colors[type_label]
+
+    
+
+# Build type_map: node → type
+type_query = """
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX brick: <https://brickschema.org/schema/Brick#>
+SELECT DISTINCT ?subject ?type
+WHERE {
+    ?subject rdf:type ?type .
+}
+"""
+
+for row in g.query(type_query):
+    subject = rename_node(row['subject'])
+    type_label = rename_node(row['type'])
+    type_map[subject] = type_label
+
+
+
+
+# # Add initial nodes to the graph
+# for row in results:
+#     subject_name = str(row['subject'])
+#     object_name = str(row['object'])
+
+#     subject_label = rename_node(row['subject'])
+#     object_label = rename_node(row['object'])
+
+#     #if isinstance(row['subject'], rdflib.term.URIRef) and subject_label not in visited_nodes:
+#     if inital_nodes(subject_label) and subject_label not in visited_nodes:
+#         net.add_node(subject_label, title=subject_name, label=subject_label)
+#         visited_nodes.add(subject_label)
+
+#     #if isinstance(row['object'], rdflib.term.URIRef) and object_label not in visited_nodes:
+#     if inital_nodes(object_label) and object_label not in visited_nodes:
+#         net.add_node(object_label, title=object_name, label=object_label)
+#         visited_nodes.add(object_label)
+
+# # Add edges between named nodes
+# for row in results:
+#     predicate_name = rename_predicate(row['predicate'])
+#     subject_label = rename_node(row['subject'])
+#     object_label = rename_node(row['object'])
+
+#     #if isinstance(row['subject'], rdflib.term.URIRef) and isinstance(row['object'], rdflib.term.URIRef):
+#     if subject_label in visited_nodes and object_label in visited_nodes:
+#         net.add_edge(subject_label, object_label, label=predicate_name)
+
+# Add all nodes with visibility tags
 for row in results:
-    subject_name = str(row['subject'])
-    object_name = str(row['object'])
+    for node in [row['subject'], row['object']]:
+        if isinstance(node, rdflib.term.URIRef):
+            node_label = rename_node(node)
+            if node_label not in visited_nodes:
+                node_uri = str(node)
+                is_main = inital_nodes(node_label)
+                node_type = type_map.get(node_label, None)
+                net.add_node(
+                    node_label,
+                    label=node_label,
+                    title=node_uri,
+                    shape="dot",
+                    color = get_color_for_type(node_type) if node_type else "#C0C0C0",
+                    #color="#6CC2A1" if is_main else "#C0C0C0",
+                    hidden=not is_main
+                )
+                visited_nodes.add(node_label)
 
+# Add all edges (hide ones between hidden nodes)
+for row in results:
     subject_label = rename_node(row['subject'])
     object_label = rename_node(row['object'])
-
-    if isinstance(row['subject'], rdflib.term.URIRef) and subject_label not in visited_nodes:
-        net.add_node(subject_label, title=subject_name, label=subject_label)
-        visited_nodes.add(subject_label)
-
-    if isinstance(row['object'], rdflib.term.URIRef) and object_label not in visited_nodes:
-        net.add_node(object_label, title=object_name, label=object_label)
-        visited_nodes.add(object_label)
-
-# Add edges between named nodes
-for row in results:
     predicate_name = rename_predicate(row['predicate'])
-    subject_label = rename_node(row['subject'])
-    object_label = rename_node(row['object'])
 
+    # Determine visibility from current node properties
     if isinstance(row['subject'], rdflib.term.URIRef) and isinstance(row['object'], rdflib.term.URIRef):
-        net.add_edge(subject_label, object_label, label=predicate_name)
+        subject_node = net.get_node(subject_label)
+        object_node = net.get_node(object_label)
+        hidden = subject_node.get('hidden', False) or object_node.get('hidden', False)
+
+        net.add_edge(subject_label, object_label, label=predicate_name, hidden=hidden)
 
 
 print(f"Total number of nodes: {len(visited_nodes)}")
@@ -99,9 +179,33 @@ html_content = f"""
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Building Network</title>
+    <title>Interactive Building Graph</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        body {{ font-family: Arial, sans-serif; }}
+        body {{ font-family: 'Inter', sans-serif; margin: 0; background-color: #f7f9fb}}
+
+        header {{
+            background: linear-gradient(to right, #0062ff, #00c9a7);
+            color: white;
+            padding: 20px 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+
+        header h1 {{
+            margin: 0;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }}
+
+        header .subtitle {{
+            font-size: 0.95rem;
+            font-weight: 400;
+            opacity: 0.9;
+        }}
+
         #graph-container {{ height: 800px; }}
         #query-container {{ margin-top: 20px; }}
         
@@ -137,15 +241,13 @@ html_content = f"""
     </style>
 </head>
 <body>
-    <h1>Interactive Building Graph</h1>
+    <header>
+        <div>
+            <h1>Building Ontology Viewer</h1>
+            <div class="subtitle">Explore relationships between building components</div>
+        </div>
+    </header>
     <div id="graph-container"></div>
-
-    <div id="query-container">
-        <h2>SPARQL Query</h2>
-        <textarea id="query-text" rows="10" cols="50" placeholder="Click a node to build your query..."></textarea><br>
-        <button onclick="executeQuery()">Run Query</button>
-        <div id="query-results"></div>
-    </div>
 
     <div id="popup">
         <span class="close-btn" onclick="closePopup()">X</span>
@@ -156,26 +258,19 @@ html_content = f"""
     <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
     <script>
         var container = document.getElementById('graph-container');
-        
-        // Inject the JSON data for nodes and edges into the graph
+
+        var allNodes = {nodes_json};
+        var allEdges = {edges_json};
+
+        // Initialize graph with only visible nodes/edges
+        var visibleNodes = allNodes.filter(n => !n.hidden);
+        var visibleEdges = allEdges.filter(e => !e.hidden);
+
         var data = {{
-            nodes: {nodes_json},
-            edges: {edges_json}
+            nodes: new vis.DataSet(visibleNodes),
+            edges: new vis.DataSet(visibleEdges)
         }};
 
-        data.nodes.forEach(function (node) {{
-            node.color = '#6CC2A1';  // Set a base color for nodes
-            if (node.label.includes("ZONE")) {{
-                node.color = '#FF8C00';  // Highlight specific types of nodes with different colors
-            }}
-        }});
-
-        data.edges.forEach(function (edge) {{
-            edge.color = {{ color: "#848484" }};
-            if (edge.label.includes("brick:isPartOf")) {{
-                edge.color = {{ color: "#FF0000" }};  // Highlight specific types of nodes with different colors
-            }}
-        }});
         
         var options = {{
             "clickToUse": true,
@@ -242,6 +337,44 @@ html_content = f"""
             document.getElementById("popup").style.display = "none";
         }}
 
+        function revealNeighbors(nodeId) {{
+            let revealed = [];
+
+            allEdges.forEach(function(edge) {{
+                if ((edge.from === nodeId || edge.to === nodeId) && edge.hidden) {{
+                    edge.hidden = false;
+
+                    // Reveal the connected node
+                    let neighborId = edge.from === nodeId ? edge.to : edge.from;
+
+                    let neighborNode = allNodes.find(n => n.id === neighborId);
+                    if (neighborNode && neighborNode.hidden) {{
+                        neighborNode.hidden = false;
+                        revealed.push(neighborId);
+                    }}
+                }}
+            }});
+
+            // Update dataset
+            let nodesToAdd = [];
+            let edgesToAdd = [];
+
+            allNodes.forEach(n => {{
+                if (!n.hidden) nodesToAdd.push(n);
+            }});
+
+            allEdges.forEach(e => {{
+                if (!e.hidden) edgesToAdd.push(e);
+            }});
+
+            network.body.data.nodes.update(nodesToAdd);
+            network.body.data.edges.update(edgesToAdd);
+
+
+            return revealed;
+        }}
+
+
         // Add a click event listener for nodes to show their name/label in the popup
         network.on("click", function(event) {{
             var clickedNode = event.nodes[0];
@@ -250,9 +383,16 @@ html_content = f"""
 
                 // Debugging: print node label to the console
                 console.log("Node clicked: " + nodeLabel);  // Console log
-                alert("Node clicked: " + nodeLabel);  // Alert for debugging
+                //alert("Node clicked: " + nodeLabel);  // Alert for debugging
 
-                showPopup(nodeLabel);
+                var revealed = revealNeighbors(clickedNode);
+                if (revealed.length > 0) {{
+                    alert("Expanded neighbors: " + revealed.join(", "));
+                }} else {{
+                    alert("No hidden neighbors found.");
+                }}
+
+                //showPopup(nodeLabel);
             }}
         }});
 

@@ -5,7 +5,6 @@ import json
 from collections import defaultdict
 import random
 
-
 # Initialize RDF graph
 g = rdflib.Graph()
 
@@ -13,7 +12,7 @@ type_map = {}  # node_id → type_label
 type_colors = {}  # type_label → hex color
 
 # Load the RDF data (replace with your actual TTL file)
-file = 'bldg1.ttl'
+file = 'bldg12.ttl'
 g.parse(file, format="turtle")
 
 g.bind("bldg1", "http://buildsys.org/ontologies/bldg1#")

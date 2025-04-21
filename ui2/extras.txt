@@ -1,0 +1,36 @@
+        function collapseNeighbors(nodeId) {{
+            let toHideNodes = new Set();
+            let toHideEdges = [];
+
+            // Find neighbors
+            allEdges.forEach(edge => {{
+                if (edge.from === nodeId || edge.to === nodeId) {{
+                    const neighborId = edge.from === nodeId ? edge.to : edge.from;
+
+                    // Check if that neighbor is only connected to this node (i.e., safe to collapse)
+                    const connections = allEdges.filter(e =>
+                        (e.from === neighborId || e.to === neighborId) && 
+                        !e.hidden && (e.from !== nodeId && e.to !== nodeId)
+                    );
+
+                    if (connections.length === 0) {{
+                        // Hide edge
+                        edge.hidden = true;
+                        toHideEdges.push(edge);
+
+                        // Hide neighbor node
+                        let neighborNode = allNodes.find(n => n.id === neighborId);
+                        if (neighborNode) {{
+                            neighborNode.hidden = true;
+                            toHideNodes.add(neighborNode);
+                        }}
+                    }}
+                }}
+            }});
+
+            // Update dataset
+            network.body.data.nodes.update([...toHideNodes]);
+            network.body.data.edges.update(toHideEdges);
+
+            console.log(`Collapsed neighbors for node: ${{nodeId}}`);
+        }}

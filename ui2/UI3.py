@@ -472,6 +472,43 @@ html_content = f"""
             return revealed;
         }}
 
+        function collapseNeighbors(nodeId) {{
+            let toHideNodes = new Set();
+            let toHideEdges = [];
+
+            // Find neighbors
+            allEdges.forEach(edge => {{
+                if (edge.from === nodeId || edge.to === nodeId) {{
+                    const neighborId = edge.from === nodeId ? edge.to : edge.from;
+
+                    // Check if that neighbor is only connected to this node (i.e., safe to collapse)
+                    const connections = allEdges.filter(e =>
+                        (e.from === neighborId || e.to === neighborId) && 
+                        !e.hidden && (e.from !== nodeId && e.to !== nodeId)
+                    );
+
+                    if (connections.length === 0) {{
+                        // Hide edge
+                        edge.hidden = true;
+                        toHideEdges.push(edge);
+
+                        // Hide neighbor node
+                        let neighborNode = allNodes.find(n => n.id === neighborId);
+                        if (neighborNode) {{
+                            neighborNode.hidden = true;
+                            toHideNodes.add(neighborNode);
+                        }}
+                    }}
+                }}
+            }});
+
+            // Update dataset
+            network.body.data.nodes.update([...toHideNodes]);
+            network.body.data.edges.update(toHideEdges);
+
+            console.log(`Collapsed neighbors for node: ${{nodeId}}`);
+        }}
+
         function showSidebar(node) {{
             var content = `<strong>Label:</strong> ${{node.label}}<br>`;
             content += `<strong>URI:</strong> ${node.title}<br><br>`;
@@ -548,8 +585,6 @@ html_content = f"""
             }}
         }} 
 
-
-
         // Add a click event listener 
         let clickTimeout = null;
 
@@ -578,10 +613,10 @@ html_content = f"""
             const clickedNode = event.nodes[0];
             if (clickedNode) {{
                 const revealed = revealNeighbors(clickedNode);
-                if (revealed.length > 0) {{
-                    console.log("Expanded neighbors: " + revealed.join(", "));
+                if (revealed.length === 0) {{ 
+                    collapseNeighbors(clickedNode);
                 }} else {{
-                    console.log("No hidden neighbors found.");
+                    console.log("Expanded neighbors: " + revealed.join(", "));
                 }}
             }}
         }});

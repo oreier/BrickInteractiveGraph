@@ -208,6 +208,84 @@ html_content = f"""
 
         #graph-container {{ height: 800px; }}
         #query-container {{ margin-top: 20px; }}
+
+        /* Style for the sidebar */
+        #sidebar {{
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 350px;
+            height: 100%;
+            background-color: white;
+            box-shadow: -2px 0 8px rgba(0, 0, 0, 0.2);
+            transition: right 0.3s ease;
+            padding: 20px;
+            z-index: 999;
+            overflow-y: auto;
+        }}
+
+        #sidebar.open {{
+            right: 0;
+        }}
+
+        .sidebar-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }}
+
+        .sidebar-header h2 {{
+            margin: 0;
+            font-size: 1.4rem;
+        }}
+
+        .sidebar-header .close-btn {{
+            font-size: 1.5rem;
+            cursor: pointer;
+        }}
+
+        .connections-list {{
+            margin-top: 10px;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: #333;
+            max-width: 100%;
+            word-break: break-word;
+        }}
+
+        .connection-item {{
+            padding: 6px 8px;
+            border-radius: 6px;
+            background-color: #f1f5f9;
+            margin-bottom: 6px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+        }}
+
+        .relation {{
+            font-weight: 600;
+            color: #0062ff;
+            white-space: nowrap;
+        }}
+
+        .arrow {{
+            font-weight: bold;
+            color: #555;
+        }}
+
+        .target {{
+            font-weight: 500;
+            color: #222;
+        }}
+
+        .hidden-tag {{
+            font-style: italic;
+            font-size: 0.85rem;
+            color: #999;
+        }}
         
         /* Style for the popup */
         #popup {{
@@ -247,7 +325,28 @@ html_content = f"""
             <div class="subtitle">Explore relationships between building components</div>
         </div>
     </header>
+
+    <div style="padding: 20px; background-color: #f7f9fb;">
+        <input id="search-input" type="text" placeholder="Search for a node..." 
+            style="padding: 10px; width: 300px; font-size: 1rem; border-radius: 4px; border: 1px solid #ccc;" />
+        <button onclick="searchNode()" 
+                style="padding: 10px 15px; font-size: 1rem; border: none; background-color: #0062ff; color: white; border-radius: 4px; margin-left: 10px;">
+            Search
+        </button>
+    </div>
+
     <div id="graph-container"></div>
+
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <h2 id="sidebar-title">Node Info</h2>
+            <span class="close-btn" onclick="closeSidebar()">×</span>
+        </div>
+        <div id="sidebar-content">
+            <p>Select a node to see details here.</p>
+        </div>
+    </div>
+
 
     <div id="popup">
         <span class="close-btn" onclick="closePopup()">X</span>
@@ -370,31 +469,123 @@ html_content = f"""
             network.body.data.nodes.update(nodesToAdd);
             network.body.data.edges.update(edgesToAdd);
 
-
             return revealed;
         }}
 
+        function showSidebar(node) {{
+            var content = `<strong>Label:</strong> ${{node.label}}<br>`;
+            content += `<strong>URI:</strong> ${node.title}<br><br>`;
 
-        // Add a click event listener for nodes to show their name/label in the popup
-        network.on("click", function(event) {{
-            var clickedNode = event.nodes[0];
-            if (clickedNode) {{
-                var nodeLabel = network.body.data.nodes.get(clickedNode).label;
+           // All connections (even hidden ones)
+            var relatedEdges = allEdges.filter(e => e.from === node.id || e.to === node.id);
 
-                // Debugging: print node label to the console
-                console.log("Node clicked: " + nodeLabel);  // Console log
-                //alert("Node clicked: " + nodeLabel);  // Alert for debugging
+           if (relatedEdges.length > 0) {{
+                content += `<strong>Connections:</strong><div class="connections-list">`;
 
-                var revealed = revealNeighbors(clickedNode);
-                if (revealed.length > 0) {{
-                    alert("Expanded neighbors: " + revealed.join(", "));
-                }} else {{
-                    alert("No hidden neighbors found.");
+                relatedEdges.forEach(edge => {{
+                    var neighborId = edge.from === node.id ? edge.to : edge.from;
+                    var neighborNode = allNodes.find(n => n.id === neighborId);
+                    var neighborLabel = neighborNode?.label || "[Unknown]";
+                    var relation = edge.label || "—";
+                    var hiddenTag = neighborNode?.hidden ? "<span class='hidden-tag'>(hidden)</span>" : "";
+
+                    content += `
+                        <div class="connection-item">
+                            <span class="relation">${{relation}}</span>
+                            <span class="arrow">→</span>
+                            <span class="target">${{neighborLabel}}</span>
+                            ${{hiddenTag}}
+                        </div>
+                    `;
+                }});
+
+                content += `</div>`;
+            }} else {{
+                content += `<em>No connections found.</em>`;
+            }}
+
+
+            document.getElementById('sidebar-title').textContent = node.label;
+            document.getElementById('sidebar-content').innerHTML = content;
+
+            document.getElementById('sidebar').classList.add('open');
+        }}
+
+        function closeSidebar() {{
+            document.getElementById('sidebar').classList.remove('open');
+        }}
+
+        function searchNode() {{
+            var input = document.getElementById("search-input").value.trim().toLowerCase();
+            if (!input) return;
+
+            // Try to find node by label or ID (case-insensitive)
+            var foundNode = allNodes.find(node => 
+                node.label.toLowerCase().includes(input) || 
+                (node.id && node.id.toLowerCase().includes(input))
+            );
+
+            if (foundNode) {{
+                // If node is hidden, reveal it and its connections
+                if (foundNode.hidden) {{
+                    foundNode.hidden = false;
+                    revealNeighbors(foundNode.id);
+                    network.body.data.nodes.update(foundNode);
                 }}
 
-                //showPopup(nodeLabel);
+                // Zoom and focus on the node
+                network.focus(foundNode.id, {{
+                    scale: 1.5,
+                    animation: {{
+                        duration: 1000,
+                        easingFunction: "easeInOutQuad"
+                    }}
+                }});
+
+                showSidebar(foundNode);  // Also show sidebar info
+            }} else {{
+                alert("No node found with that name.");
+            }}
+        }} 
+
+
+
+        // Add a click event listener 
+        let clickTimeout = null;
+
+        network.on("click", function(event) {{
+            if (clickTimeout) {{
+                clearTimeout(clickTimeout);
+                clickTimeout = null;
+            }}
+
+            const clickedNode = event.nodes[0];
+            if (clickedNode) {{
+                // Delay the single click action to distinguish it from double click
+                clickTimeout = setTimeout(() => {{
+                    const node = network.body.data.nodes.get(clickedNode);
+                    showSidebar(node);
+                }}, 200); // 200ms delay to wait for possible double click
             }}
         }});
+
+        network.on("doubleClick", function(event) {{
+            if (clickTimeout) {{
+                clearTimeout(clickTimeout); // Cancel the single-click
+                clickTimeout = null;
+            }}
+
+            const clickedNode = event.nodes[0];
+            if (clickedNode) {{
+                const revealed = revealNeighbors(clickedNode);
+                if (revealed.length > 0) {{
+                    console.log("Expanded neighbors: " + revealed.join(", "));
+                }} else {{
+                    console.log("No hidden neighbors found.");
+                }}
+            }}
+        }});
+
 
         document.body.addEventListener('click', function(event) {{
             const popup = document.getElementById('popup');

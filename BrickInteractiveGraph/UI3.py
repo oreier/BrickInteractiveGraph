@@ -73,7 +73,10 @@ def get_color_for_type(type_label):
         type_colors[type_label] = f'#{r():02x}{r():02x}{r():02x}'
     return type_colors[type_label]
 
-    
+def is_class_type(type_label):
+    class_keywords = ['owl']  
+    return any(keyword.lower() in type_label.lower() for keyword in class_keywords)
+   
 
 # Build type_map: node → type
 type_query = """
@@ -103,10 +106,10 @@ for row in results:
                 net.add_node(
                     node_label,
                     label=node_label,
-                    title=node_uri,
+                    title=node_type,
+                    uri=node_uri,
                     shape="dot",
                     color = get_color_for_type(node_type) if node_type else "#C0C0C0",
-                    #color="#6CC2A1" if is_main else "#C0C0C0",
                     hidden=not is_main
                 )
                 visited_nodes.add(node_label)
@@ -256,35 +259,6 @@ html_content = f"""
             color: #999;
         }}
         
-        /* Style for the popup */
-        #popup {{
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            display: none;
-            max-width: 80%;
-            max-height: 80%;
-            overflow: auto;
-            z-index: 1000;
-        }}
-        
-        #popup h2 {{
-            margin-top: 0;
-        }}
-        
-        #popup .close-btn {{
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            color: white;
-            font-size: 18px;
-            cursor: pointer;
-        }}
     </style>
 </head>
 <body>
@@ -304,6 +278,28 @@ html_content = f"""
         </button>
     </div>
 
+    <button onclick="openSettings()" 
+        style="margin-left: 20px; padding: 10px 15px; font-size: 1rem; background-color: #ccc; border: none; border-radius: 4px;">
+        ⚙️ Settings
+    </button>
+
+
+    <!-- MENU SCREEN -->
+    <div id="menu-screen" style="position: absolute; width: 100%; height: 100%; background: #f7f9fb; z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+        <h2>Select Graph Settings</h2>
+
+
+        <label style="margin-top: 20px;">Color Scheme:</label>
+        <div>
+            <label><input type="radio" name="color-mode" value="type" checked /> Default by Type</label><br />
+            <label><input type="radio" name="color-mode" value="class-instance" /> Class vs Instance</label>
+        </div>
+
+        <button onclick="initializeGraph()" style="margin-top: 30px; padding: 10px 20px; font-size: 1rem;">Load Graph</button>
+    </div>
+
+
+
     <div id="graph-container"></div>
 
     <div id="sidebar">
@@ -317,15 +313,10 @@ html_content = f"""
     </div>
 
 
-    <div id="popup">
-        <span class="close-btn" onclick="closePopup()">X</span>
-        <h2>Node Information</h2>
-        <p id="popup-text">Click on a node to view information.</p>
-    </div>
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
     <script>
         var container = document.getElementById('graph-container');
+        let currentColorMode = "type";  
 
         var allNodes = {nodes_json};
         var allEdges = {edges_json};
@@ -359,51 +350,32 @@ html_content = f"""
         }};
         
         var network = new vis.Network(container, data, options);
-        
-        // Function to display the popup with the node name
-        function showPopup(nodeLabel) {{
-            var popup = document.getElementById("popup");
-            var screenWidth = window.innerWidth;  // Get the width of the screen
-            var screenHeight = window.innerHeight; // Get the height of the screen
-            var popupWidth = popup.offsetWidth; // Get the width of the popup
-            var popupHeight = popup.offsetHeight;
 
-            var left = (screenWidth - popupWidth) / 2;
-            var top = (screenHeight - popupHeight) / 2;
+        function initializeGraph() {{
 
-            // Position the popup in the center of the screen
-            popup.style.left = left + 'px';
-            popup.style.top = top + 'px';
+            // Get selected color mode
+            const selectedColorMode = document.querySelector('input[name="color-mode"]:checked').value;
 
-            // Set the text content of the popup
-            //document.getElementById("popup-text").textContent = "You clicked on: " + nodeLabel;
 
-            var popupText = "You clicked on: " + nodeLabel;
+            if (selectedColorMode !== currentColorMode) {{
+                currentColorMode = selectedColorMode;
 
-            // Fetch and display neighbors and relationships
-            var neighbors = network.getConnectedNodes(nodeLabel);  // Get connected nodes
-            //console.log("Neighbors to clicked: " + neighbors); 
-            alert("Neighbors to clicked: " + neighbors);
-            if (neighbors.length > 0) {{
-                popupText += "\\nNeighbors:";
-                neighbors.forEach(function(neighborId) {{
-                    var neighborLabel = network.body.data.nodes.get(neighborId).label;
-                    popupText += "\\n- " + neighborLabel;
-            }});
-            }} else {{
-                popupText += "\\nNo neighbors found.";
+                // Re-apply the selected color mode
+                const useClassInstanceMode = (currentColorMode === "class-instance");
+                updateNodeColors(useClassInstanceMode);
             }}
 
-            document.getElementById("popup-text").textContent = popupText;
+            // Remove the menu screen
+            document.getElementById("menu-screen").style.display = "none";
 
-            // Display the popup
-            popup.style.display = "block";
+        }}
+        window.initializeGraph = initializeGraph;
+
+        function openSettings() {{
+            // Show the menu screen
+            document.getElementById("menu-screen").style.display = "flex";
         }}
 
-        // Function to close the popup
-        function closePopup() {{
-            document.getElementById("popup").style.display = "none";
-        }}
 
         function revealNeighbors(nodeId) {{
             let revealed = [];
@@ -554,6 +526,27 @@ html_content = f"""
             }}
         }} 
 
+        // Function to update node colors based on the mode
+        function updateNodeColors(useClassInstanceMode) {{
+            allNodes.forEach(function(node) {{
+                const nodeURI = node.uri|| "";
+                const nodeType = node.title || "";
+
+                if (useClassInstanceMode) {{
+                    node.color = nodeURI.includes("owl") ? "#4A90E2" : "#7ED957";  // Class vs Instance
+                }} else {{
+                    // Type mode: assign consistent pastel color per type
+                    const hash = [...nodeType].reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                    const r = 100 + (hash * 53 % 100);
+                    const g = 100 + (hash * 97 % 100);
+                    const b = 100 + (hash * 29 % 100);
+                    node.color = `rgb(${{r}}, ${{g}}, ${{b}})`;
+                }}
+            }});
+
+            network.body.data.nodes.update(allNodes);
+        }};
+
         // Add a click event listener 
         let clickTimeout = null;
 
@@ -591,18 +584,11 @@ html_content = f"""
         }});
 
 
-        document.body.addEventListener('click', function(event) {{
-            const popup = document.getElementById('popup');
-            if (!popup.contains(event.target)) {{
-                closePopup();
-            }}
-        }});
-
     </script>
 </body>
 </html>
 """
 
 # Save the HTML content to a file
-with open("ui3.html", "w") as f:
+with open("ui3.html", "w", encoding="utf-8") as f:
     f.write(html_content)

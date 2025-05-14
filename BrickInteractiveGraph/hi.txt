@@ -1,0 +1,44 @@
+        // Function to display the popup with the node name
+        function showPopup(nodeLabel) {{
+            var popup = document.getElementById("popup");
+            var screenWidth = window.innerWidth;  // Get the width of the screen
+            var screenHeight = window.innerHeight; // Get the height of the screen
+            var popupWidth = popup.offsetWidth; // Get the width of the popup
+            var popupHeight = popup.offsetHeight;
+
+            var left = (screenWidth - popupWidth) / 2;
+            var top = (screenHeight - popupHeight) / 2;
+
+            // Position the popup in the center of the screen
+            popup.style.left = left + 'px';
+            popup.style.top = top + 'px';
+
+            // Set the text content of the popup
+            //document.getElementById("popup-text").textContent = "You clicked on: " + nodeLabel;
+
+            var popupText = "You clicked on: " + nodeLabel;
+
+            // Fetch and display neighbors and relationships
+            var neighbors = network.getConnectedNodes(nodeLabel);  // Get connected nodes
+            //console.log("Neighbors to clicked: " + neighbors); 
+            alert("Neighbors to clicked: " + neighbors);
+            if (neighbors.length > 0) {{
+                popupText += "\\nNeighbors:";
+                neighbors.forEach(function(neighborId) {{
+                    var neighborLabel = network.body.data.nodes.get(neighborId).label;
+                    popupText += "\\n- " + neighborLabel;
+            }});
+            }} else {{
+                popupText += "\\nNo neighbors found.";
+            }}
+
+            document.getElementById("popup-text").textContent = popupText;
+
+            // Display the popup
+            popup.style.display = "block";
+        }}
+
+        // Function to close the popup
+        function closePopup() {{
+            document.getElementById("popup").style.display = "none";
+        }}

@@ -15,6 +15,14 @@ import json
 from collections import defaultdict
 import random
 
+# Load configuration from JSON file
+with open("config.json") as config_file:
+    config = json.load(config_file)
+
+# Use config values
+rdf_file = config.get("rdf_file")
+starting_keywords = config.get("starting_node_keywords")
+
 # Initialize RDF graph
 g = rdflib.Graph()
 
@@ -22,8 +30,8 @@ type_map = {}  # node_id → type_label
 type_colors = {}  # type_label → hex color
 
 # Load the RDF data (replace with your actual TTL file)
-file = 'bldg12.ttl'
-g.parse(file, format="turtle")
+
+g.parse(rdf_file, format="turtle")
 
 g.bind("bldg1", "http://buildsys.org/ontologies/bldg1#")
 g.bind("brick", "https://brickschema.org/schema/Brick#")
@@ -69,9 +77,8 @@ def rename_predicate(predicate):
         return str(predicate)
     
 def inital_nodes(node_label):
-    #keywords = ['AHU', 'ZONE', 'CHW', 'VAV', 'ROOM', 'FLOOR']
-    keywords = ['FLOOR']
-    result = any(keyword in node_label.upper() for keyword in keywords)
+    # keywords = ['FLOOR']
+    result = any(keyword in node_label.upper() for keyword in starting_keywords)
     if result:
         print(f"✔️ Matched: {node_label}")
     return result

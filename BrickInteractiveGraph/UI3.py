@@ -1,3 +1,13 @@
+# /// script
+# dependencies = [
+#   "rdflib",
+#   "pyvis",
+#   "json",
+#   "collections",
+#   "random"
+# ]
+# ///
+
 import rdflib
 from pyvis.network import Network
 import json
